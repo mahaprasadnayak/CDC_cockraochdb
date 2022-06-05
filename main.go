@@ -14,8 +14,8 @@ import (
 var (
 PORT = ":8080"
 // topic      *pubsub.Topic
-// my_project = "iserveustaging"
-// my_topic   = "staging_topic"
+// my_project = "<gcp_project name>"
+// my_topic   = "<gcp pubsub topic>"
 // ctx = context.Background()
 // Client *pubsub.Client
 )
