@@ -16,7 +16,8 @@ RUN go mod download
 # Copy local code to the container image.
 COPY . ./
 
-# Build the binary. 
+
+# Build the binary.
 RUN go build -mod=readonly -v -o server
 
 # Use the official Debian slim image for a lean production container.
@@ -29,6 +30,9 @@ RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -
 
 # Copy the binary to the production image from the builder stage.
 COPY --from=builder /app/server /app/server
+
+COPY <creds> /.
+
 
 
 

@@ -1,23 +1,24 @@
 package main
 
-//CDC OPTIMISED USING ndjson.
 import (
+	"changefeed/Dbservice"
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
-
-	"github.com/olivere/ndjson"
+	"time"
 )
 
 
-var (
-PORT = ":8080"
-// topic      *pubsub.Topic
-// my_project = "iserveustaging"
-// my_topic   = "staging_topic"
-// ctx = context.Background()
-// Client *pubsub.Client
+const (
+   PORT = ":8080"
+   //datasetID = "staging"
+   datasetID = "production"
+   projectID = "iserveuprod"
 )
 
 func main() {
@@ -25,94 +26,74 @@ func main() {
 	http.HandleFunc("/",changedDataCapture)
 	http.ListenAndServe(PORT, nil)
 }
-
-// type message struct {
-// 	Key string            `json:"key"`
-// 	Msg After `json:"message"`
-// }
-type Data struct {
-	AfterData After `json:"after"`
-	Key       []int `json:"key"`
-  }
-  
-type After struct {
-	// Id               int64 `json:"id"`
-	// PreviousBalance  float64 `json:"previousbalance"`
-	// Amount           float64 `json:"amount"`
-	// CurrentBalance   float64 `json:"currentbalance"`
-	// WalletId         int64 `json:"walletid"`
-	// Status           string  `json:"status"`
-	// Type             int64 `json:"type"`
-	// ReversalId       int64 `json:"reversalid"`
-	// StatusCode      int64 `json:"status_code"`
-	// Txnid            int64 `json:"txnid"`
-	// CreatedDate      string `json:"createddate"`
-	// UpdatedDate      string `json:"updateddate"`
-	// TransactionType string `json:"transaction_type"`
-	Id	int64 `json:"id"`
-	Balance float64 `json:"balance"`
-	HoldBalance float64 `json:"hold_balance"`
-	Status int64 `json:"status"`
-	MinimumBalance float64 `json:"minimum_balance"`
-	MaximumBalance float64 `json:"maximum_balance"`
-}
+type mark map[string]interface{}
 
 func changedDataCapture(w http.ResponseWriter, r *http.Request) {
     fmt.Println("Coming From Changefeed")
     reqBody, _ := ioutil.ReadAll(r.Body)
     fmt.Println("Data coming from Changefeed ",string(reqBody))
-	// createclient_pubsub()
-    // defer Client.Close()
-	digit := ndjson.NewReader(strings.NewReader(string(reqBody)))
-    for digit.Next() {
-      var data Data
-      if err := digit.Decode(&data); err != nil {
-        fmt.Println("Decode failed", err)
+    // Decoding the interface data
+    digit := json.NewDecoder(strings.NewReader(string(reqBody)))
+    for digit.More() {
+        var result mark
+        err := digit.Decode(&result)
+        if err != nil {
+            if err != io.EOF {
+                log.Fatal(err)
+            }
+            break
+        }
+        fmt.Println("final_data ", result )
+        //check for interface is nil or not
+        if result != nil && len(result) > 0 {
+        Balance := result.Data("after").Balance("balance")
+        fmt.Println("Balance:: ", Balance)
+        Id := result.Data("after").Id("id")
+        fmt.Println("id:: ", Id)
+        //bigquery client
+        ctx := context.Background()
+        client := Dbservice.GetBQClient()
+        defer client.Close()
+        Date:=time.Now().Format("2006-01-02 15:04:05")
+        table_date:= time.Now().Format("20060102")
+	    tableID := "wallet3_cdc_"+table_date 
+        fmt.Println("Current TableId of BigQuery:",tableID)
+        //checking tableid form bigquery
+        md,err := client.Dataset(datasetID).Table(tableID).Metadata(ctx)
+        if err != nil {
+            fmt.Println("Failed to detect any table metadata::",err)
+            return
+        }
+        fmt.Printf("Number of rows present in the tableid:: %s is:: %d\n",tableID,md.NumRows)
+        //Big query Table Details
+        tabledetails := projectID+"."+datasetID+"."+tableID
+        //Data to be insertrd in bigquery table
+        amount:=fmt.Sprintf("%v",Balance) 
+        id:=fmt.Sprintf("%v",Id)
+        fmt.Println(id,amount,Date)
+        //query to be executed for bigquery
+        q:= client.Query(`insert `+"`"+tabledetails+"`"+` (id,balance,date) values(`+id+`,`+amount+`,`+"'"+Date+"'"+`)`)
+        job, err := q.Run(ctx)
+        if err != nil {
+        fmt.Println("Error in insert BigQuery",err)
         return
-      }
-      fmt.Println("CDC data from DB",data.AfterData)
-      fmt.Println("ID",data.AfterData.Id)
-      fmt.Println("status",data.AfterData.Status)
-      fmt.Println("Balance",data.AfterData.Balance)
-      
-
-	// creating pubsub client
-        
-	// m := message{
-	// 	Key: "wallet1",
-	// 	Msg: data.AfterData,
-	// }
-       
-	// jsonData, err := json.Marshal(m)
-	// if err != nil {
-	// fmt.Println(err)
-	// }
-	// topic = Client.Topic(my_topic)
-	// defer topic.Stop()
-	// topic.PublishSettings.NumGoroutines = 2
-	// result := topic.Publish(ctx, &pubsub.Message{Data: jsonData})
-	// id, err := result.Get(ctx)
-	// if err != nil {
-	// 	fmt.Println("Error in Publish: ", err)
-	// }
-    // fmt.Println("Published a message with msg ID:", id,"txnid::",data.AfterData.Txnid)
-} 
+    }
+    //after inertion returning jobid
+    fmt.Println("Inserted Successfully in bigquery with the ID :",job.ID())
+    } else {
+        fmt.Println("Interface is nil")
+    }
+ }
 }
 
+func (d mark) Data(s string) mark {
+    return d[s].(map[string]interface{})
+ }
  
+ func (d mark) Balance(s string) float64 {
+    return d[s].(float64)
+ }
 
-// func createclient_pubsub() {
-// 	var err error
-// 	Client, err = pubsub.NewClient(ctx, my_project)
-
-// 	if err != nil {
-// 		fmt.Println("Errror in Pub/Sub client creation globally :", err)
-// 	} else {
-// 		topic = Client.Topic(my_topic)
-// 		fmt.Println("Pubsub client created successfullly and Client!,  and topic :", topic)
-// 	}
-
-// }
-
-
- 
+ func (d mark) Id(s string) float64 {
+    return d[s].(float64)
+ }
