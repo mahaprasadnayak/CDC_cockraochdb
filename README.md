@@ -10,7 +10,7 @@ Baseurl:  https://www.cockroachlabs.com/docs/stable/create-changefeed.html
 Example Query :-   CREATE CHANGEFEED FOR TABLE <table_name>  INTO  <sink_URL> ;
 
 
-Query :-  CREATE CHANGEFEED FOR TABLE wallet INTO 'experimental- https://testfeed-twdwtabx5q-uc.a.run.app ' ;
+Query :-  CREATE CHANGEFEED FOR TABLE wallet INTO 'experimental- https://<URL LINK>' ;
 
 1.	After executing this query ,It will create a Changefeed for the Table “wallet” with a specific JOB_ID.												
 2.	To view the about of JOB_ID , The following Query will help to view the details of the JOB_ID.												
